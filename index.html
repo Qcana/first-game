@@ -1,0 +1,2580 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Ulson - Platformer 2D</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #333;
+            image-rendering: pixelated;
+        }
+        #startScreen, #gameOverScreen, #winScreen {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            z-index: 10;
+        }
+        .screen-title {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 0 #4FC3F7;
+        }
+        .screen-subtitle {
+            font-size: 20px;
+            margin-bottom: 30px;
+            color: #aaa;
+        }
+        .btn {
+            padding: 15px 40px;
+            font-size: 22px;
+            background: #4FC3F7;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn:hover { transform: scale(1.05); background: #3BA8D8; }
+        .controls {
+            margin-top: 30px;
+            color: #888;
+            font-size: 14px;
+            text-align: center;
+            line-height: 1.8;
+        }
+        #gameOverScreen .screen-title { text-shadow: 3px 3px 0 #900; }
+        #winScreen .screen-title { text-shadow: 3px 3px 0 #27ae60; color: #2ecc71; }
+        .hidden { display: none !important; }
+
+        /* Mobile responsive */
+        @media (max-width: 960px) {
+            canvas { width: 100vw !important; height: auto !important; }
+            .screen-title { font-size: 32px; }
+            .screen-subtitle { font-size: 14px; padding: 0 10px; }
+            .controls { font-size: 11px; }
+            #charSelect { padding: 12px 16px !important; gap: 14px !important; flex-wrap: wrap; justify-content: center; }
+            #charPreview { width: 80px !important; height: 110px !important; }
+        }
+
+        /* Touch controls */
+        #touchControls {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 140px;
+            z-index: 20;
+            pointer-events: none;
+            touch-action: none;
+        }
+        #touchControls.visible { display: block; }
+
+        .touch-btn {
+            position: absolute;
+            pointer-events: auto;
+            touch-action: none;
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.35);
+            color: #fff;
+            font-size: 22px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: background 0.05s;
+        }
+        .touch-btn:active, .touch-btn.pressed {
+            background: rgba(255,255,255,0.4);
+            border-color: rgba(255,255,255,0.7);
+        }
+
+        /* D-pad left side */
+        #tb-left  { bottom: 20px; left: 15px; }
+        #tb-right { bottom: 20px; left: 80px; }
+        #tb-jump  { bottom: 82px; left: 48px; }
+
+        /* Action buttons right side */
+        #tb-shoot { bottom: 82px; right: 15px; background: rgba(231,76,60,0.3); border-color: rgba(231,76,60,0.6); }
+        #tb-shoot:active, #tb-shoot.pressed { background: rgba(231,76,60,0.6); }
+        #tb-crouch { bottom: 20px; right: 15px; background: rgba(142,68,173,0.3); border-color: rgba(142,68,173,0.6); }
+        #tb-crouch:active, #tb-crouch.pressed { background: rgba(142,68,173,0.6); }
+
+        /* Enter button center */
+        #tb-enter {
+            bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: auto; padding: 0 18px;
+            border-radius: 28px;
+            font-size: 14px;
+            background: rgba(243,156,18,0.3);
+            border-color: rgba(243,156,18,0.6);
+        }
+        #tb-enter:active, #tb-enter.pressed { background: rgba(243,156,18,0.6); }
+    </style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="startScreen">
+    <div class="screen-title">ULSON</div>
+    <div class="screen-subtitle">Parcours 200m dans l'espace et affronte le Boss Final !</div>
+    <div id="charSelect" style="display:flex;align-items:center;gap:24px;margin-bottom:20px;background:rgba(255,255,255,0.07);border-radius:14px;padding:18px 32px;border:2px solid #4FC3F7;">
+        <canvas id="charPreview" width="120" height="160" style="image-rendering:pixelated;border-radius:8px;background:rgba(0,0,0,0.4);"></canvas>
+        <div style="text-align:left;">
+            <div style="font-size:13px;color:#aaa;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">Personnage</div>
+            <div style="font-size:26px;font-weight:bold;color:#4FC3F7;">Ulson</div>
+            <div style="font-size:13px;color:#ccc;margin-top:6px;line-height:1.5;">
+                Pelage blanc, regard de loup<br>
+                Armé d'un pistolet laser<br>
+                <span style="color:#8e44ad;">Double saut</span> &bull; <span style="color:#4FC3F7;">Charge mortelle</span>
+            </div>
+        </div>
+    </div>
+    <button class="btn" onclick="startGame()">JOUER</button>
+    <div class="controls">
+        <strong>Contrôles :</strong><br>
+        ← → ou A/D : Se déplacer<br>
+        ↑ ou W : Sauter (x2 pour double saut !)<br>
+        ↓ : S'accroupir (tue les monstres au contact)<br>
+        F ou Clic souris : Tirer (balle par balle)<br>
+        ENTRÉE : Avancer les dialogues<br>
+        Ramassez les mitraillettes pour le tir continu !
+    </div>
+</div>
+
+<div id="gameOverScreen" class="hidden">
+    <div class="screen-title">GAME OVER</div>
+    <div class="screen-subtitle" id="deathMsg">Vous avez été vaincu...</div>
+    <button class="btn" onclick="startGame()">RECOMMENCER</button>
+</div>
+
+<div id="winScreen" class="hidden">
+    <div class="screen-title">VICTOIRE !</div>
+    <div class="screen-subtitle">Jay a été vaincu ! Ulson est un héros !</div>
+    <button class="btn" onclick="startGame()">REJOUER</button>
+</div>
+
+<div id="touchControls">
+    <div id="tb-left" class="touch-btn">&#9664;</div>
+    <div id="tb-right" class="touch-btn">&#9654;</div>
+    <div id="tb-jump" class="touch-btn">&#9650;</div>
+    <div id="tb-shoot" class="touch-btn">&#9679;</div>
+    <div id="tb-crouch" class="touch-btn">&#9660;</div>
+    <div id="tb-enter" class="touch-btn">ENTR&#201;E</div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURATION
+// ============================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const W = 960;
+const H = 540;
+canvas.width = W;
+canvas.height = H;
+
+const GRAVITY = 0.6;
+const GROUND_Y = H - 60;
+const TOTAL_DISTANCE = 200; // 200m
+const PIXELS_PER_METER = 80;
+const BOSS_ENCOUNTER_DIST = 100;
+const BOSS_FIGHT_DIST = 200;
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let game = {};
+let keys = {};
+let mouse = { x: 0, y: 0, down: false, clicked: false };
+
+function initGame() {
+    game = {
+        state: 'playing', // playing, cutscene, bossfight, dead, won
+        cameraX: 0,
+        distance: 0,
+        score: 0,
+        cutscenePlayed: false,
+        cutsceneTimer: 0,
+        cutscenePhase: 0,
+        cutsceneTexts: [
+            "???  : Tiens, tiens... Tu es arrivé jusqu'ici ?",
+            "Ulson : Qui es-tu ?! Comment tu t'appelles ?!",
+            "???  : Mon nom ? Ha ! Tu le sauras si tu parviens à atteindre mon château...",
+            "???  : ...si tu survis jusque-là. Ha ha ha ha ha !"
+        ],
+        cutsceneTextIndex: 0,
+        cutsceneCharIndex: 0,
+        cutsceneWait: 0,
+        cutsceneWaitForEnter: false,
+        dialogAdvance: false,
+        bossRetreating: false,
+        bossRetreatingX: 0,
+        bossFight: false,
+        boss: null,
+        platforms: [],
+        enemies: [],
+        bullets: [],
+        bossBullets: [],
+        particles: [],
+        decorations: [],
+        clouds: [],
+        pickups: [],
+        lastEnemySpawn: 0,
+        lastPlatformX: 400,
+        lastPickupDist: 0,
+    };
+
+    // Player
+    game.player = {
+        x: 200, y: GROUND_Y - 40,
+        w: 28, h: 40,
+        vx: 0, vy: 0,
+        onGround: false,
+        facing: 1,
+        hp: 100, maxHp: 100,
+        shootCooldown: 0,
+        animFrame: 0,
+        animTimer: 0,
+        invincible: 0,
+        dead: false,
+        jumpCount: 0,
+        maxJumps: 2,
+        hasMachineGun: false,
+        machineGunTimer: 0,
+        crouching: false
+    };
+
+    // Generate initial platforms
+    generateWorld(0, W * 3);
+
+    // Generate stars (instead of clouds for space theme)
+    game.stars = [];
+    for (let i = 0; i < 120; i++) {
+        game.stars.push({
+            x: Math.random() * W * 5,
+            y: Math.random() * (GROUND_Y - 20),
+            size: 0.5 + Math.random() * 2,
+            brightness: 0.4 + Math.random() * 0.6,
+            twinkleSpeed: 0.02 + Math.random() * 0.05,
+            twinklePhase: Math.random() * Math.PI * 2
+        });
+    }
+    // Generate nebula clouds (slow-moving colored clouds)
+    for (let i = 0; i < 8; i++) {
+        game.clouds.push({
+            x: Math.random() * W * 3,
+            y: 30 + Math.random() * 120,
+            w: 80 + Math.random() * 120,
+            speed: 0.05 + Math.random() * 0.1,
+            color: ['#4a0e6b', '#1a237e', '#0d47a1', '#880e4f', '#311b92', '#1b5e20', '#bf360c', '#004d40'][i]
+        });
+    }
+    // Planets
+    game.planets = [
+        { x: W * 1.5, y: 70, radius: 35, color1: '#e74c3c', color2: '#c0392b', ringColor: '#f39c12' },
+        { x: W * 3.5, y: 50, radius: 22, color1: '#3498db', color2: '#2980b9', ringColor: null },
+        { x: W * 6, y: 90, radius: 45, color1: '#f39c12', color2: '#e67e22', ringColor: '#ecf0f1' }
+    ];
+}
+
+// ============================================================
+// WORLD GENERATION
+// ============================================================
+function generateWorld(fromX, toX) {
+    // Platforms
+    while (game.lastPlatformX < toX) {
+        let gap = 120 + Math.random() * 180;
+        let px = game.lastPlatformX + gap;
+        let pw = 80 + Math.random() * 120;
+        let py = GROUND_Y - 60 - Math.random() * 120;
+        game.platforms.push({ x: px, y: py, w: pw, h: 16 });
+        game.lastPlatformX = px + pw;
+
+        // Sometimes add decoration (space theme)
+        if (Math.random() < 0.3) {
+            game.decorations.push({
+                x: px + Math.random() * pw,
+                y: GROUND_Y,
+                type: Math.random() < 0.5 ? 'crystal' : 'antenna'
+            });
+        }
+    }
+}
+
+function spawnEnemies() {
+    let dist = game.distance;
+    // Spawn enemies frequently (every 8-18m)
+    if (dist - game.lastEnemySpawn > 8 + Math.random() * 10) {
+        let ex = game.cameraX + W + 50;
+        // Spawn 1-3 enemies at once
+        let count = Math.random() < 0.25 ? 3 : (Math.random() < 0.5 ? 2 : 1);
+        for (let n = 0; n < count; n++) {
+            let ey = GROUND_Y - 30;
+            let type = Math.random() < 0.3 ? 'flying' : 'ground';
+            if (type === 'flying') ey = GROUND_Y - 80 - Math.random() * 80;
+            game.enemies.push({
+                x: ex + n * 60, y: ey,
+                w: 24, h: 30,
+                vx: -1.5 - Math.random(),
+                vy: 0,
+                type: type,
+                hp: type === 'flying' ? 1 : 2,
+                animTimer: 0,
+                flyTimer: Math.random() * Math.PI * 2
+            });
+        }
+        game.lastEnemySpawn = dist;
+    }
+}
+
+// ============================================================
+// DRAWING HELPERS
+// ============================================================
+function drawLego(x, y, w, h, facing, color, isPlayer, animFrame, crouching) {
+    let cx = x - game.cameraX;
+    let legOffset = isPlayer ? Math.sin(animFrame * 0.3) * 5 : 0;
+
+    // Crouch offset: push everything down and compress
+    let crouchShift = crouching ? 12 : 0;
+    let drawY = y + crouchShift;
+
+    // Tail (behind body)
+    ctx.fillStyle = '#E0E0E0';
+    let tailX = facing > 0 ? cx - 4 : cx + w + 1;
+    let tailCurl = Math.sin(Date.now() * 0.005) * 2;
+    ctx.fillRect(tailX, drawY - 4 + tailCurl, 5, 4);
+    ctx.fillRect(tailX + (facing > 0 ? -2 : 2), drawY - 8 + tailCurl, 4, 5);
+    ctx.fillStyle = '#F5F5F5';
+    ctx.fillRect(tailX + (facing > 0 ? -1 : 1), drawY - 6 + tailCurl, 3, 3);
+
+    // Head - white fur
+    ctx.fillStyle = '#F5F5F5';
+    ctx.fillRect(cx + 4, drawY - 14, w - 8, 14);
+
+    // Pointed ears (triangles on top)
+    ctx.fillStyle = '#E0E0E0';
+    // Left ear
+    ctx.beginPath();
+    ctx.moveTo(cx + 4, drawY - 14);
+    ctx.lineTo(cx + 7, drawY - 22);
+    ctx.lineTo(cx + 11, drawY - 14);
+    ctx.closePath();
+    ctx.fill();
+    // Right ear
+    ctx.beginPath();
+    ctx.moveTo(cx + w - 11, drawY - 14);
+    ctx.lineTo(cx + w - 7, drawY - 22);
+    ctx.lineTo(cx + w - 4, drawY - 14);
+    ctx.closePath();
+    ctx.fill();
+    // Inner ear (pink)
+    ctx.fillStyle = '#FFCCCC';
+    ctx.beginPath();
+    ctx.moveTo(cx + 6, drawY - 14);
+    ctx.lineTo(cx + 7, drawY - 19);
+    ctx.lineTo(cx + 9, drawY - 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + w - 9, drawY - 14);
+    ctx.lineTo(cx + w - 7, drawY - 19);
+    ctx.lineTo(cx + w - 6, drawY - 14);
+    ctx.closePath();
+    ctx.fill();
+
+    // Face area
+    ctx.fillStyle = '#F5F5F5';
+    ctx.fillRect(cx + 5, drawY - 10, w - 10, 10);
+
+    // Dark grey face mask pattern (husky marking)
+    ctx.fillStyle = '#666';
+    let eyeX = facing > 0 ? cx + 9 : cx + w - 14;
+    ctx.fillRect(eyeX - 1, drawY - 12, 5, 4);
+    ctx.fillRect(eyeX + 6, drawY - 12, 5, 4);
+    // Mask top bridge
+    ctx.fillRect(cx + w / 2 - 3, drawY - 14, 6, 3);
+
+    // Blue husky eyes
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(eyeX, drawY - 9, 4, 3);
+    ctx.fillRect(eyeX + 6, drawY - 9, 4, 3);
+    ctx.fillStyle = '#4FC3F7';
+    ctx.fillRect(eyeX + 1, drawY - 9, 2, 2);
+    ctx.fillRect(eyeX + 7, drawY - 9, 2, 2);
+    // Pupils
+    ctx.fillStyle = '#111';
+    ctx.fillRect(eyeX + 1, drawY - 8, 1, 1);
+    ctx.fillRect(eyeX + 7, drawY - 8, 1, 1);
+
+    // Black nose
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx + w / 2 - 2, drawY - 5, 4, 3);
+    // Tiny mouth line
+    ctx.fillRect(cx + w / 2 - 1, drawY - 2, 2, 1);
+
+    // Body - white fur with light grey belly
+    ctx.fillStyle = '#F0F0F0';
+    ctx.fillRect(cx + 2, drawY, w - 4, h * 0.5);
+    // Belly patch
+    ctx.fillStyle = '#DDD';
+    ctx.fillRect(cx + 6, drawY + 2, w - 12, h * 0.4);
+
+    // Front legs / arms (fur)
+    ctx.fillStyle = '#E0E0E0';
+    let armY = drawY + 2;
+    ctx.fillRect(cx - 5, armY, 7, 4);
+    ctx.fillRect(cx + w - 2, armY, 7, 4);
+    // Paws
+    ctx.fillStyle = '#F5F5F5';
+    ctx.fillRect(cx - 6, armY + 3, 4, 3);
+    ctx.fillRect(cx + w + 2, armY + 3, 4, 3);
+
+    // Gun (on facing side)
+    if (isPlayer) {
+        ctx.fillStyle = '#555';
+        let gunX = facing > 0 ? cx + w + 1 : cx - 14;
+        ctx.fillRect(gunX, armY - 1, 14, 5);
+        ctx.fillStyle = '#333';
+        ctx.fillRect(facing > 0 ? gunX + 10 : gunX, armY, 4, 3);
+    }
+
+    // Legs (compressed when crouching)
+    ctx.fillStyle = '#CCCCCC';
+    let legTopY = drawY + h * 0.5;
+    let legH = crouching ? h * 0.2 : h * 0.5;
+    if (crouching) legOffset = 0;
+    ctx.fillRect(cx + 3, legTopY, 8, legH + legOffset);
+    ctx.fillRect(cx + w - 11, legTopY, 8, legH - legOffset);
+
+    // Paw feet
+    ctx.fillStyle = '#F5F5F5';
+    let feetY = crouching ? legTopY + legH : y + h - 2;
+    ctx.fillRect(cx + 1, feetY + legOffset, 10, 4);
+    ctx.fillRect(cx + w - 11, feetY - legOffset, 10, 4);
+}
+
+function drawBoss(x, y, w, h, masked) {
+    let cx = x - game.cameraX;
+
+    // Cape
+    ctx.fillStyle = '#8e44ad';
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, y + 2);
+    ctx.lineTo(cx + w + 5, y + 2);
+    ctx.lineTo(cx + w + 10, y + h + 5);
+    ctx.lineTo(cx - 10, y + h + 5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Head
+    if (masked) {
+        ctx.fillStyle = '#FFD93D';
+        ctx.fillRect(cx + 6, y - 20, w - 12, 18);
+        ctx.fillStyle = '#E8C430';
+        ctx.fillRect(cx + 10, y - 25, w - 20, 6);
+    } else {
+        ctx.fillStyle = '#F5D6B8';
+        ctx.fillRect(cx + 6, y - 20, w - 12, 18);
+    }
+
+    // Mask or Jay face
+    if (masked) {
+        ctx.fillStyle = '#222';
+        ctx.fillRect(cx + 8, y - 18, w - 16, 12);
+        // Red eyes through mask
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(cx + 12, y - 15, 4, 3);
+        ctx.fillRect(cx + w - 16, y - 15, 4, 3);
+        // Crown/Helmet
+        ctx.fillStyle = '#f39c12';
+        ctx.fillRect(cx + 6, y - 25, 4, 8);
+        ctx.fillRect(cx + w - 10, y - 25, 4, 8);
+        ctx.fillRect(cx + w / 2 - 2, y - 28, 4, 10);
+    } else {
+        // Jay real face - light skin, buzz cut, thick brows, green eyes, smirk
+        // Skin tone (light)
+        ctx.fillStyle = '#F5D6B8';
+        ctx.fillRect(cx + 6, y - 20, w - 12, 18);
+        // Buzz cut hair (very short, brown)
+        ctx.fillStyle = '#8B7355';
+        ctx.fillRect(cx + 5, y - 24, w - 10, 7);
+        ctx.fillRect(cx + 4, y - 22, 3, 4);
+        ctx.fillRect(cx + w - 7, y - 22, 3, 4);
+        // Thick dark eyebrows
+        ctx.fillStyle = '#3E2C1C';
+        ctx.fillRect(cx + 11, y - 17, 6, 2);
+        ctx.fillRect(cx + w - 17, y - 17, 6, 2);
+        // Green/hazel eyes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(cx + 12, y - 14, 5, 4);
+        ctx.fillRect(cx + w - 17, y - 14, 5, 4);
+        ctx.fillStyle = '#6B8E4E';
+        ctx.fillRect(cx + 13, y - 14, 3, 3);
+        ctx.fillRect(cx + w - 16, y - 14, 3, 3);
+        ctx.fillStyle = '#222';
+        ctx.fillRect(cx + 14, y - 13, 1, 2);
+        ctx.fillRect(cx + w - 15, y - 13, 1, 2);
+        // Nose
+        ctx.fillStyle = '#E8C4A0';
+        ctx.fillRect(cx + w / 2 - 1, y - 11, 3, 3);
+        // Smirk (asymmetric grin)
+        ctx.fillStyle = '#C4756B';
+        ctx.fillRect(cx + 13, y - 6, 10, 2);
+        ctx.fillStyle = '#A05A50';
+        ctx.fillRect(cx + 21, y - 7, 3, 2);
+        // Slight stubble
+        ctx.fillStyle = 'rgba(80,60,40,0.2)';
+        ctx.fillRect(cx + 10, y - 5, 16, 3);
+    }
+
+    // Body
+    if (masked) {
+        // Armored body when masked
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(cx, y, w, h * 0.55);
+        ctx.fillStyle = '#f39c12';
+        ctx.fillRect(cx + w / 2 - 3, y + 3, 6, h * 0.45);
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(cx - 8, y + 2, 10, 6);
+        ctx.fillRect(cx + w - 2, y + 2, 10, 6);
+        // Sword
+        ctx.fillStyle = '#bdc3c7';
+        ctx.fillRect(cx + w + 5, y - 15, 4, 22);
+        ctx.fillStyle = '#f39c12';
+        ctx.fillRect(cx + w + 2, y + 4, 10, 4);
+    } else {
+        // Black t-shirt when unmasked (Jay)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(cx, y, w, h * 0.55);
+        // Shirt creases
+        ctx.fillStyle = '#2a2a2a';
+        ctx.fillRect(cx + w / 2 - 1, y + 3, 2, h * 0.4);
+        // Collar
+        ctx.fillStyle = '#111';
+        ctx.fillRect(cx + 8, y - 1, w - 16, 3);
+        // Arms (skin + black sleeves)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(cx - 8, y + 2, 10, 6);
+        ctx.fillRect(cx + w - 2, y + 2, 10, 6);
+        // Hands (skin)
+        ctx.fillStyle = '#F5D6B8';
+        ctx.fillRect(cx - 10, y + 6, 5, 5);
+        ctx.fillRect(cx + w + 5, y + 6, 5, 5);
+        // Sword still in hand
+        ctx.fillStyle = '#bdc3c7';
+        ctx.fillRect(cx + w + 5, y - 15, 4, 22);
+        ctx.fillStyle = '#f39c12';
+        ctx.fillRect(cx + w + 2, y + 4, 10, 4);
+    }
+
+    // Legs
+    ctx.fillStyle = '#1a252f';
+    ctx.fillRect(cx + 4, y + h * 0.55, 10, h * 0.45);
+    ctx.fillRect(cx + w - 14, y + h * 0.55, 10, h * 0.45);
+
+    // Feet
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx + 2, y + h - 2, 14, 5);
+    ctx.fillRect(cx + w - 14, y + h - 2, 14, 5);
+}
+
+// Draw portrait face in dialogue box
+function drawPortrait(x, y, who) {
+    let s = 40; // portrait size
+    // Background circle
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath();
+    ctx.arc(x + s / 2, y + s / 2, s / 2 + 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (who === 'husky') {
+        // Husky dog face portrait
+        // White fur head
+        ctx.fillStyle = '#F5F5F5';
+        ctx.fillRect(x + 8, y + 6, s - 16, s - 14);
+        // Pointed ears
+        ctx.fillStyle = '#E0E0E0';
+        ctx.beginPath();
+        ctx.moveTo(x + 8, y + 6);
+        ctx.lineTo(x + 12, y - 2);
+        ctx.lineTo(x + 16, y + 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x + s - 16, y + 6);
+        ctx.lineTo(x + s - 12, y - 2);
+        ctx.lineTo(x + s - 8, y + 6);
+        ctx.closePath();
+        ctx.fill();
+        // Inner ear pink
+        ctx.fillStyle = '#FFCCCC';
+        ctx.beginPath();
+        ctx.moveTo(x + 10, y + 6);
+        ctx.lineTo(x + 12, y + 1);
+        ctx.lineTo(x + 14, y + 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x + s - 14, y + 6);
+        ctx.lineTo(x + s - 12, y + 1);
+        ctx.lineTo(x + s - 10, y + 6);
+        ctx.closePath();
+        ctx.fill();
+        // Grey mask markings
+        ctx.fillStyle = '#666';
+        ctx.fillRect(x + 11, y + 8, 6, 5);
+        ctx.fillRect(x + 23, y + 8, 6, 5);
+        ctx.fillRect(x + 16, y + 6, 8, 3);
+        // Face area
+        ctx.fillStyle = '#F5F5F5';
+        ctx.fillRect(x + 9, y + 13, s - 18, 10);
+        // Blue eyes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x + 13, y + 13, 4, 3);
+        ctx.fillRect(x + 23, y + 13, 4, 3);
+        ctx.fillStyle = '#4FC3F7';
+        ctx.fillRect(x + 14, y + 13, 2, 2);
+        ctx.fillRect(x + 24, y + 13, 2, 2);
+        // Black nose
+        ctx.fillStyle = '#111';
+        ctx.fillRect(x + 18, y + 18, 4, 3);
+        // Mouth
+        ctx.fillRect(x + 19, y + 21, 2, 1);
+        // Body (white fur + grey belly)
+        ctx.fillStyle = '#F0F0F0';
+        ctx.fillRect(x + 10, y + 26, s - 20, 12);
+        ctx.fillStyle = '#DDD';
+        ctx.fillRect(x + 14, y + 28, s - 28, 8);
+        // Border (ice blue)
+        ctx.strokeStyle = '#4FC3F7';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + s / 2, y + s / 2, s / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    } else if (who === 'boss-masked') {
+        // Boss masked face
+        // Head
+        ctx.fillStyle = '#FFD93D';
+        ctx.fillRect(x + 8, y + 5, s - 16, s - 12);
+        // Mask
+        ctx.fillStyle = '#222';
+        ctx.fillRect(x + 10, y + 8, s - 20, 14);
+        // Red eyes
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(x + 14, y + 12, 4, 3);
+        ctx.fillRect(x + 22, y + 12, 4, 3);
+        // Crown
+        ctx.fillStyle = '#f39c12';
+        ctx.fillRect(x + 10, y + 2, 4, 7);
+        ctx.fillRect(x + 26, y + 2, 4, 7);
+        ctx.fillRect(x + 18, y, 4, 8);
+        // Body
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(x + 10, y + 30, s - 20, 8);
+        // Border
+        ctx.strokeStyle = '#8e44ad';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + s / 2, y + s / 2, s / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    } else if (who === 'jaysouni') {
+        // Jay unmasked - real face portrait
+        // Light skin head
+        ctx.fillStyle = '#F5D6B8';
+        ctx.fillRect(x + 8, y + 5, s - 16, s - 12);
+        // Buzz cut hair (short brown)
+        ctx.fillStyle = '#8B7355';
+        ctx.fillRect(x + 7, y + 2, s - 14, 6);
+        ctx.fillRect(x + 6, y + 4, 3, 4);
+        ctx.fillRect(x + s - 9, y + 4, 3, 4);
+        // Thick dark eyebrows
+        ctx.fillStyle = '#3E2C1C';
+        ctx.fillRect(x + 12, y + 10, 6, 2);
+        ctx.fillRect(x + 22, y + 10, 6, 2);
+        // Eyes - white + green iris + black pupil
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x + 13, y + 13, 5, 4);
+        ctx.fillRect(x + 22, y + 13, 5, 4);
+        ctx.fillStyle = '#6B8E4E';
+        ctx.fillRect(x + 14, y + 13, 3, 3);
+        ctx.fillRect(x + 23, y + 13, 3, 3);
+        ctx.fillStyle = '#222';
+        ctx.fillRect(x + 15, y + 14, 1, 2);
+        ctx.fillRect(x + 24, y + 14, 1, 2);
+        // Nose
+        ctx.fillStyle = '#E8C4A0';
+        ctx.fillRect(x + s / 2 - 1, y + 17, 3, 3);
+        // Smirk
+        ctx.fillStyle = '#C4756B';
+        ctx.fillRect(x + 14, y + 22, 12, 2);
+        ctx.fillStyle = '#A05A50';
+        ctx.fillRect(x + 24, y + 21, 3, 2);
+        // Stubble hint
+        ctx.fillStyle = 'rgba(80,60,40,0.15)';
+        ctx.fillRect(x + 12, y + 24, 16, 2);
+        // Black shirt collar
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(x + 10, y + 28, s - 20, 3);
+        // Body (black shirt)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(x + 10, y + 31, s - 20, 7);
+        // Border
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + s / 2, y + s / 2, s / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    } else if (who === 'narration') {
+        // Narration - star icon
+        ctx.fillStyle = '#f39c12';
+        ctx.font = 'bold 24px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('*', x + s / 2, y + s / 2 + 8);
+        ctx.strokeStyle = '#f39c12';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + s / 2, y + s / 2, s / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+function drawEnemy(e) {
+    let cx = e.x - game.cameraX;
+    let color = e.type === 'flying' ? '#e74c3c' : '#e67e22';
+
+    // Simple LEGO enemy
+    // Head
+    ctx.fillStyle = '#c0392b';
+    ctx.fillRect(cx + 4, e.y - 10, e.w - 8, 10);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cx + 7, e.y - 7, 3, 3);
+    ctx.fillRect(cx + e.w - 10, e.y - 7, 3, 3);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(cx + 8, e.y - 3, 8, 2);
+
+    // Body
+    ctx.fillStyle = color;
+    ctx.fillRect(cx + 2, e.y, e.w - 4, e.h * 0.5);
+
+    // Legs
+    ctx.fillStyle = '#555';
+    let legTop = e.y + e.h * 0.5;
+    ctx.fillRect(cx + 3, legTop, 7, e.h * 0.5);
+    ctx.fillRect(cx + e.w - 10, legTop, 7, e.h * 0.5);
+
+    if (e.type === 'flying') {
+        // Wings
+        ctx.fillStyle = 'rgba(255,100,100,0.5)';
+        let wingFlap = Math.sin(e.flyTimer * 8) * 5;
+        ctx.fillRect(cx - 10, e.y - 5 + wingFlap, 12, 6);
+        ctx.fillRect(cx + e.w - 2, e.y - 5 - wingFlap, 12, 6);
+    }
+}
+
+// ============================================================
+// HEALTHBAR
+// ============================================================
+function drawHealthBar(x, y, w, h, current, max, color, label) {
+    let ratio = Math.max(0, current / max);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = '#555';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w * ratio, h);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x, y - 5);
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.ceil(current) + '/' + max, x + w, y - 5);
+}
+
+// ============================================================
+// UPDATE
+// ============================================================
+function update() {
+    if (game.state === 'dead' || game.state === 'won') return;
+
+    // Boss defeat cutscene update
+    if (game.state === 'bossdefeat' && game.bossDefeat) {
+        let bd = game.bossDefeat;
+        // Phase 0: Boss falls down
+        if (bd.phase === 0) {
+            bd.fallTimer++;
+            bd.bossAngle = Math.min(Math.PI / 2, bd.bossAngle + 0.03);
+            if (bd.fallTimer >= 90) {
+                bd.phase = 1;
+            }
+        }
+        // Phase 1: Dialogue
+        if (bd.phase === 1) {
+            if (bd.textIndex < bd.texts.length) {
+                let text = bd.texts[bd.textIndex];
+                if (!bd.waitForEnter) {
+                    bd.charIndex += 0.5;
+                    if (text && bd.charIndex >= text.length) {
+                        bd.waitForEnter = true;
+                    }
+                    if (game.dialogAdvance) {
+                        bd.charIndex = text.length;
+                        bd.waitForEnter = true;
+                        game.dialogAdvance = false;
+                    }
+                } else {
+                    if (game.dialogAdvance) {
+                        bd.textIndex++;
+                        bd.charIndex = 0;
+                        bd.waitForEnter = false;
+                        game.dialogAdvance = false;
+                    }
+                }
+            } else {
+                // All dialogue done, show win screen
+                game.state = 'won';
+                setTimeout(() => {
+                    document.getElementById('winScreen').classList.remove('hidden');
+                }, 1500);
+            }
+        }
+        updateParticles();
+        return;
+    }
+
+    let p = game.player;
+
+    // --- CUTSCENE ---
+    if (game.state === 'cutscene') {
+        updateCutscene();
+        return;
+    }
+
+    // --- BOSS CUTSCENE 2 (200m) - player frozen ---
+    if (game.state === 'bosscutscene2') {
+        // Player frozen: apply gravity only
+        p.vx = 0;
+        p.vy += GRAVITY;
+        p.y += p.vy;
+        if (p.y + p.h >= GROUND_Y) {
+            p.y = GROUND_Y - p.h;
+            p.vy = 0;
+            p.onGround = true;
+        }
+        // Update cutscene logic (defined further below)
+        // We need to reach the bosscutscene2 block, so don't return here
+    }
+
+    // --- BOSS FIGHT ---
+    if (game.state === 'bossfight') {
+        updateBossFight();
+    }
+
+    // Crouch
+    p.crouching = (keys['ArrowDown'] || keys['KeyS']) && p.onGround;
+
+    // Movement (disabled during bosscutscene2, slower when crouching)
+    if (game.state !== 'bosscutscene2') {
+        let speed = p.crouching ? 1.5 : 4;
+        if (keys['ArrowLeft'] || keys['KeyA']) { p.vx = -speed; p.facing = -1; }
+        else if (keys['ArrowRight'] || keys['KeyD']) { p.vx = speed; p.facing = 1; }
+        else { p.vx *= 0.7; }
+    }
+
+    // Jump (double jump support via jumpRequested flag set on keydown)
+    // Cannot jump while crouching or during cutscene
+    if (p.jumpRequested && p.jumpCount < p.maxJumps && !p.crouching && game.state !== 'bosscutscene2') {
+        p.vy = -12;
+        p.onGround = false;
+        p.jumpCount++;
+        p.jumpRequested = false;
+    }
+    if (p.jumpRequested) p.jumpRequested = false;
+
+    // Gravity
+    p.vy += GRAVITY;
+    p.y += p.vy;
+    p.x += p.vx;
+
+    // Ground collision
+    p.onGround = false;
+    if (p.y + p.h >= GROUND_Y) {
+        p.y = GROUND_Y - p.h;
+        p.vy = 0;
+        p.onGround = true;
+        p.jumpCount = 0;
+    }
+
+    // Platform collision
+    game.platforms.forEach(plat => {
+        if (p.vy >= 0 &&
+            p.x + p.w > plat.x && p.x < plat.x + plat.w &&
+            p.y + p.h >= plat.y && p.y + p.h <= plat.y + plat.h + 10) {
+            p.y = plat.y - p.h;
+            p.vy = 0;
+            p.onGround = true;
+            p.jumpCount = 0;
+        }
+    });
+
+    // Animation
+    if (Math.abs(p.vx) > 0.5) {
+        p.animTimer++;
+        p.animFrame = p.animTimer;
+    } else {
+        p.animFrame = 0;
+    }
+
+    // Shoot (mouse click or F key) - disabled during cutscenes
+    if (p.shootCooldown > 0) p.shootCooldown--;
+    let wantsShoot = (mouse.clicked || keys['KeyF']) && game.state !== 'bosscutscene2';
+    if (wantsShoot && p.shootCooldown <= 0) {
+        let angle;
+        if (mouse.down) {
+            // Mouse: aim at cursor
+            angle = Math.atan2(
+                (mouse.y - (p.y + p.h / 2)),
+                (mouse.x + game.cameraX - p.x)
+            );
+        } else {
+            // F key: shoot forward in facing direction only
+            angle = p.facing > 0 ? 0 : Math.PI;
+        }
+        let bulletSpeed = p.hasMachineGun ? 14 : (p.crouching ? 6 : 10);
+        let gunY = p.crouching ? p.y + 18 : p.y + 10;
+        game.bullets.push({
+            x: p.x + (p.facing > 0 ? p.w + 14 : -14),
+            y: gunY,
+            vx: Math.cos(angle) * bulletSpeed,
+            vy: Math.sin(angle) * bulletSpeed,
+            life: 60
+        });
+        p.shootCooldown = p.hasMachineGun ? 4 : (p.crouching ? 20 : 12);
+        mouse.clicked = false;
+    }
+
+    // Invincibility frames
+    if (p.invincible > 0) p.invincible--;
+
+    // Camera
+    let targetCam = p.x - W / 3;
+    if (game.state !== 'bossfight') {
+        game.cameraX += (targetCam - game.cameraX) * 0.1;
+    } else {
+        // Lock camera in boss arena
+        let bossArenaX = game.boss.arenaX;
+        game.cameraX += (bossArenaX - game.cameraX) * 0.1;
+    }
+    if (game.cameraX < 0) game.cameraX = 0;
+
+    // Keep player inside boss arena
+    if (game.state === 'bossfight' && game.boss) {
+        let arenaLeft = game.boss.arenaX + 10;
+        let arenaRight = game.boss.arenaX + W - 40;
+        if (p.x < arenaLeft) { p.x = arenaLeft; p.vx = 0; }
+        if (p.x > arenaRight) { p.x = arenaRight; p.vx = 0; }
+    }
+
+    // Distance
+    if (game.state === 'playing') {
+        game.distance = Math.max(game.distance, p.x / PIXELS_PER_METER);
+    }
+
+    // Check for cutscene trigger
+    if (!game.cutscenePlayed && game.distance >= BOSS_ENCOUNTER_DIST) {
+        game.state = 'cutscene';
+        game.cutsceneTimer = 0;
+        game.cutscenePhase = 0; // 0=boss appears, 1=boss talks, 2=boss retreats slowly
+        game.cutsceneAppearTimer = 0;
+        game.cutscenePlayed = true;
+        game.boss = {
+            x: game.cameraX + W + 60,
+            y: GROUND_Y - 55,
+            w: 36, h: 55,
+            targetX: p.x + 200
+        };
+        return;
+    }
+
+    // Check for boss fight trigger
+    if (game.distance >= BOSS_FIGHT_DIST && !game.bossFight) {
+        game.bossFight = true;
+        game.state = 'bosscutscene2';
+        let castleX = BOSS_FIGHT_DIST * PIXELS_PER_METER;
+        game.bossCutscene2 = {
+            phase: 0, // 0=player stops + see castle, 1=boss exits castle, 2=dialogue
+            timer: 0,
+            castleViewTimer: 0,
+            bossExitDone: false,
+            texts: [
+                "???  : Tu es arrivé... Impressionnant.",
+                "???  : Il est temps que tu saches à qui tu fais face...",
+                "* Le Boss retire lentement son masque... *",
+                "Ulson : ... Jay ?! C'est... c'est toi ?!",
+                "Jay : Surprise ? Le combat commence maintenant !"
+            ],
+            textIndex: 0,
+            charIndex: 0,
+            wait: 0,
+            waitForEnter: false,
+            maskRemoved: false
+        };
+        game.boss = {
+            x: castleX, // Boss starts at castle door
+            y: GROUND_Y - 55,
+            w: 36, h: 55,
+            hp: 200, maxHp: 200,
+            phase: 1,
+            attackTimer: 0,
+            moveDir: -1,
+            arenaX: p.x - 100,
+            chargeTimer: 0,
+            charging: false,
+            masked: true,
+            targetX: p.x + 200, // Where boss walks to face player
+            // Genkidama
+            genkidama: null,
+            genkidamaTimer: 0,
+            genkidamaCooldown: 300,
+            genkidamaCharging: false
+        };
+        // Stop the player
+        p.vx = 0;
+    }
+
+    // Update boss cutscene 2 (at 200m)
+    if (game.state === 'bosscutscene2') {
+        let cs = game.bossCutscene2;
+        cs.timer++;
+
+        // Phase 0: Player stops, camera pans to show castle
+        if (cs.phase === 0) {
+            cs.castleViewTimer++;
+            // Pan camera toward castle
+            let castleTarget = BOSS_FIGHT_DIST * PIXELS_PER_METER - W / 2;
+            game.cameraX += (castleTarget - game.cameraX) * 0.03;
+            if (cs.castleViewTimer >= 150) { // 2.5 seconds
+                cs.phase = 1;
+            }
+            return;
+        }
+
+        // Phase 1: Boss exits castle door and walks slowly toward player
+        if (cs.phase === 1) {
+            if (game.boss.x > game.boss.targetX) {
+                game.boss.x -= 1.2;
+                // Camera follows boss
+                let midX = (p.x + game.boss.x) / 2 - W / 2;
+                game.cameraX += (midX - game.cameraX) * 0.05;
+            } else {
+                cs.phase = 2;
+            }
+            return;
+        }
+
+        // Phase 2: Dialogue (advance with Enter)
+        if (cs.phase === 2) {
+            if (cs.textIndex < cs.texts.length) {
+                let text = cs.texts[cs.textIndex];
+                if (!cs.waitForEnter) {
+                    cs.charIndex += 0.5;
+                    if (text && cs.charIndex >= text.length) {
+                        cs.waitForEnter = true;
+                        if (cs.textIndex === 2 && !cs.maskRemoved) {
+                            cs.maskRemoved = true;
+                            game.boss.masked = false;
+                            spawnParticles(game.boss.x + game.boss.w / 2, game.boss.y, '#8e44ad', 15);
+                        }
+                    }
+                    if (game.dialogAdvance) {
+                        cs.charIndex = text.length;
+                        cs.waitForEnter = true;
+                        game.dialogAdvance = false;
+                        if (cs.textIndex === 2 && !cs.maskRemoved) {
+                            cs.maskRemoved = true;
+                            game.boss.masked = false;
+                            spawnParticles(game.boss.x + game.boss.w / 2, game.boss.y, '#8e44ad', 15);
+                        }
+                    }
+                } else {
+                    if (game.dialogAdvance) {
+                        cs.textIndex++;
+                        cs.charIndex = 0;
+                        cs.waitForEnter = false;
+                        game.dialogAdvance = false;
+                    }
+                }
+            } else {
+                // Start the fight
+                game.boss.arenaX = p.x - 100;
+                game.state = 'bossfight';
+            }
+        }
+        return;
+    }
+
+    // Spawn enemies (not during boss fight)
+    if (game.state === 'playing') {
+        spawnEnemies();
+    }
+
+    // Spawn machine gun pickups periodically
+    if (game.distance - game.lastPickupDist > 40 + Math.random() * 30) {
+        let px = game.cameraX + W + 100 + Math.random() * 200;
+        game.pickups.push({
+            x: px, y: GROUND_Y - 20,
+            w: 24, h: 14,
+            type: 'machinegun',
+            bobTimer: Math.random() * Math.PI * 2
+        });
+        game.lastPickupDist = game.distance;
+    }
+
+    // Update pickups (bob animation + collision with player)
+    for (let i = game.pickups.length - 1; i >= 0; i--) {
+        let pk = game.pickups[i];
+        pk.bobTimer += 0.05;
+        // Remove if too far behind
+        if (pk.x < game.cameraX - 100) { game.pickups.splice(i, 1); continue; }
+        // Player pickup collision
+        if (p.x + p.w > pk.x && p.x < pk.x + pk.w &&
+            p.y + p.h > pk.y - 5 + Math.sin(pk.bobTimer) * 4 && p.y < pk.y + pk.h) {
+            p.hasMachineGun = true;
+            p.machineGunTimer = 600; // 10 seconds at 60fps
+            game.pickups.splice(i, 1);
+            spawnParticles(pk.x + pk.w / 2, pk.y, '#FF6600', 8);
+            continue;
+        }
+    }
+
+    // Machine gun timer
+    if (p.hasMachineGun) {
+        p.machineGunTimer--;
+        if (p.machineGunTimer <= 0) {
+            p.hasMachineGun = false;
+        }
+    }
+
+    // Generate more world
+    generateWorld(game.cameraX, game.cameraX + W * 3);
+
+    // Update bullets
+    updateBullets();
+
+    // Update enemies
+    updateEnemies();
+
+    // Update particles
+    updateParticles();
+
+    // Update clouds
+    game.clouds.forEach(c => {
+        c.x += c.speed;
+        if (c.x - game.cameraX > W + 100) c.x = game.cameraX - 100;
+        if (c.x < game.cameraX - 150) c.x = game.cameraX + W + 50;
+    });
+
+    // Player death
+    if (p.hp <= 0 && !p.dead) {
+        p.dead = true;
+        game.state = 'dead';
+        spawnParticles(p.x, p.y, '#e74c3c', 20);
+        setTimeout(() => {
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }, 500);
+    }
+
+    // Prevent player from going too far left
+    if (p.x < game.cameraX) p.x = game.cameraX;
+}
+
+function updateBullets() {
+    // Player bullets
+    for (let i = game.bullets.length - 1; i >= 0; i--) {
+        let b = game.bullets[i];
+        b.x += b.vx;
+        b.y += b.vy;
+        b.life--;
+        if (b.life <= 0) { game.bullets.splice(i, 1); continue; }
+
+        // Hit enemies (use generous hitbox with bullet radius)
+        for (let j = game.enemies.length - 1; j >= 0; j--) {
+            let e = game.enemies[j];
+            if (b.x + 6 > e.x && b.x - 6 < e.x + e.w && b.y + 6 > e.y && b.y - 6 < e.y + e.h) {
+                e.hp--;
+                game.bullets.splice(i, 1);
+                spawnParticles(b.x, b.y, '#f39c12', 5);
+                if (e.hp <= 0) {
+                    spawnParticles(e.x + e.w / 2, e.y + e.h / 2, '#e74c3c', 10);
+                    game.enemies.splice(j, 1);
+                    game.score += 10;
+                }
+                break;
+            }
+        }
+
+        // Hit boss
+        if (game.boss && game.state === 'bossfight' && game.boss.hp > 0) {
+            let boss = game.boss;
+            if (b.x + 4 > boss.x && b.x - 4 < boss.x + boss.w &&
+                b.y + 4 > boss.y && b.y - 4 < boss.y + boss.h) {
+                boss.hp -= 5;
+                game.bullets.splice(i, 1);
+                spawnParticles(b.x, b.y, '#f39c12', 5);
+                if (boss.hp <= 0) {
+                    game.state = 'bossdefeat';
+                    spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#8e44ad', 30);
+                    spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#f39c12', 30);
+                    game.bossDefeat = {
+                        phase: 0, // 0=boss falls, 1=dialogue
+                        fallTimer: 0,
+                        bossY: boss.y,
+                        bossAngle: 0,
+                        texts: [
+                            "Jay : Arg... Non... C'est impossible...",
+                            "Jay : Comment... tu a pu me vaincre ?!",
+                            "* Jay tombe à genoux, vaincu... *",
+                            "Ulson : C'est fini, Jay.",
+                            "Jay : Tu...n'as encore rien....",
+                            "* Jay s'effondre au sol... Le héros a triomphé ! *"
+                        ],
+                        textIndex: 0,
+                        charIndex: 0,
+                        waitForEnter: false
+                    };
+                }
+            }
+        }
+    }
+
+    // Boss bullets
+    for (let i = game.bossBullets.length - 1; i >= 0; i--) {
+        let b = game.bossBullets[i];
+        b.x += b.vx;
+        b.y += b.vy;
+        b.life--;
+        if (b.life <= 0) { game.bossBullets.splice(i, 1); continue; }
+
+        let p = game.player;
+        if (b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
+            if (p.invincible <= 0) {
+                p.hp -= 7;
+                p.invincible = 30;
+                spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#e74c3c', 5);
+            }
+            game.bossBullets.splice(i, 1);
+        }
+    }
+}
+
+function updateEnemies() {
+    let p = game.player;
+    for (let i = game.enemies.length - 1; i >= 0; i--) {
+        let e = game.enemies[i];
+        e.x += e.vx;
+        e.animTimer += 0.1;
+
+        if (e.type === 'flying') {
+            e.flyTimer += 0.05;
+            e.y += Math.sin(e.flyTimer) * 1.5;
+        }
+
+        // Remove if off screen left
+        if (e.x < game.cameraX - 100) {
+            game.enemies.splice(i, 1);
+            continue;
+        }
+
+        // Collision with player
+        if (p.x + p.w > e.x && p.x < e.x + e.w &&
+            p.y + p.h > e.y && p.y < e.y + e.h) {
+            // Crouching kills ground enemies on contact
+            if (p.crouching && e.type === 'ground') {
+                e.hp = 0;
+                spawnParticles(e.x + e.w / 2, e.y + e.h / 2, '#e74c3c', 10);
+                game.enemies.splice(i, 1);
+                game.score += 10;
+                continue;
+            }
+            // Otherwise take damage
+            if (p.invincible <= 0) {
+                p.hp -= 15;
+                p.invincible = 45;
+                spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#e74c3c', 8);
+            }
+        }
+    }
+}
+
+function updateCutscene() {
+    game.cutsceneTimer++;
+
+    // Phase 0: Boss walks in from the right, player observes
+    if (game.cutscenePhase === 0) {
+        // Boss walks towards target position
+        if (game.boss.x > game.boss.targetX) {
+            game.boss.x -= 2;
+        } else {
+            game.cutsceneAppearTimer++;
+            // Pause to let player see the boss (120 frames = 2 seconds)
+            if (game.cutsceneAppearTimer >= 120) {
+                game.cutscenePhase = 1; // Move to dialogue phase
+            }
+        }
+        return;
+    }
+
+    // Phase 1: Boss talks (advance with Enter)
+    if (game.cutscenePhase === 1) {
+        if (game.cutsceneTextIndex < game.cutsceneTexts.length) {
+            let text = game.cutsceneTexts[game.cutsceneTextIndex];
+            if (!game.cutsceneWaitForEnter) {
+                // Text is still typing
+                game.cutsceneCharIndex += 0.5;
+                if (text && game.cutsceneCharIndex >= text.length) {
+                    game.cutsceneWaitForEnter = true;
+                }
+                // Enter during typing: show full text immediately
+                if (game.dialogAdvance) {
+                    game.cutsceneCharIndex = text.length;
+                    game.cutsceneWaitForEnter = true;
+                    game.dialogAdvance = false;
+                }
+            } else {
+                // Waiting for Enter to advance
+                if (game.dialogAdvance) {
+                    game.cutsceneTextIndex++;
+                    game.cutsceneCharIndex = 0;
+                    game.cutsceneWaitForEnter = false;
+                    game.dialogAdvance = false;
+                }
+            }
+        } else {
+            game.cutscenePhase = 2; // Move to retreat phase
+        }
+        return;
+    }
+
+    // Phase 2: Boss retreats slowly
+    if (game.cutscenePhase === 2) {
+        game.boss.x += 1.5; // Slow retreat
+        if (game.boss.x > game.cameraX + W + 100) {
+            game.state = 'playing';
+            game.boss = null;
+        }
+    }
+}
+
+function updateBossFight() {
+    let boss = game.boss;
+    let p = game.player;
+    if (!boss || boss.hp <= 0) return;
+
+    boss.attackTimer++;
+
+    // Boss AI
+    let dx = p.x - boss.x;
+    let dist = Math.abs(dx);
+
+    // Movement (boss walks slowly)
+    if (!boss.charging) {
+        if (dist > 200) {
+            boss.x += (dx > 0 ? 0.5 : -0.5);
+        } else if (dist < 80) {
+            boss.x += (dx > 0 ? -0.4 : 0.4);
+        }
+    }
+
+    // Attack patterns (slower fire rate: every 90 frames instead of 60)
+    if (boss.attackTimer % 90 === 0 && !boss.charging) {
+        // Shoot projectiles (slower bullets)
+        let angle = Math.atan2(p.y - boss.y, p.x - boss.x);
+        game.bossBullets.push({
+            x: boss.x + boss.w / 2,
+            y: boss.y + boss.h / 2,
+            vx: Math.cos(angle) * 4,
+            vy: Math.sin(angle) * 4,
+            life: 90
+        });
+
+        // Phase 2: more bullets (only when below 50% HP)
+        if (boss.hp < boss.maxHp * 0.5) {
+            game.bossBullets.push({
+                x: boss.x + boss.w / 2,
+                y: boss.y + boss.h / 2,
+                vx: Math.cos(angle + 0.3) * 4,
+                vy: Math.sin(angle + 0.3) * 4,
+                life: 90
+            });
+        }
+    }
+
+    // Charge attack every 240 frames (slower), shorter charge
+    if (boss.attackTimer % 240 === 180) {
+        boss.charging = true;
+        boss.chargeDir = dx > 0 ? 1 : -1;
+        boss.chargeTimer = 30;
+    }
+
+    if (boss.charging) {
+        boss.x += boss.chargeDir * 3;
+        boss.chargeTimer--;
+        if (boss.chargeTimer <= 0) boss.charging = false;
+    }
+
+    // Boss-player collision (less damage: 12 instead of 20)
+    if (p.invincible <= 0 &&
+        p.x + p.w > boss.x && p.x < boss.x + boss.w &&
+        p.y + p.h > boss.y && p.y < boss.y + boss.h) {
+        p.hp -= 12;
+        p.invincible = 60;
+        p.vx = (p.x < boss.x ? -6 : 6);
+        p.vy = -4;
+        spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#e74c3c', 10);
+    }
+
+    // ---- GENKIDAMA ATTACK ----
+    boss.genkidamaCooldown--;
+
+    // Start charging genkidama
+    if (boss.genkidamaCooldown <= 0 && !boss.genkidamaCharging && !boss.genkidama) {
+        boss.genkidamaCharging = true;
+        boss.genkidamaTimer = 0;
+        boss.charging = false; // Stop charge attack during genkidama
+    }
+
+    // Charging phase: energy ball grows above boss
+    if (boss.genkidamaCharging) {
+        boss.genkidamaTimer++;
+        let chargeTime = 180; // 3 seconds to charge
+        if (boss.genkidamaTimer >= chargeTime) {
+            // Launch genkidama toward player
+            let angle = Math.atan2(p.y - (boss.y - 80), p.x - boss.x);
+            boss.genkidama = {
+                x: boss.x + boss.w / 2,
+                y: boss.y - 80,
+                radius: 35,
+                vx: Math.cos(angle) * 3,
+                vy: Math.sin(angle) * 3,
+                life: 300,
+                trail: []
+            };
+            boss.genkidamaCharging = false;
+            boss.genkidamaCooldown = 420; // 7 seconds between genkidamas
+        }
+        // Spawn charging particles
+        if (boss.genkidamaTimer % 3 === 0) {
+            let angle = Math.random() * Math.PI * 2;
+            let dist = 60 + Math.random() * 40;
+            spawnParticles(
+                boss.x + boss.w / 2 + Math.cos(angle) * dist,
+                boss.y - 80 + Math.sin(angle) * dist,
+                '#00bfff', 1
+            );
+        }
+    }
+
+    // Update active genkidama
+    if (boss.genkidama) {
+        let g = boss.genkidama;
+        g.x += g.vx;
+        g.y += g.vy;
+        g.life--;
+        // Trail particles
+        if (g.life % 2 === 0) {
+            spawnParticles(g.x, g.y, '#00bfff', 2);
+        }
+        // Hit player
+        let gdx = g.x - (p.x + p.w / 2);
+        let gdy = g.y - (p.y + p.h / 2);
+        let gDist = Math.sqrt(gdx * gdx + gdy * gdy);
+        if (gDist < g.radius + 15 && p.invincible <= 0) {
+            p.hp -= 25;
+            p.invincible = 90;
+            p.vy = -8;
+            p.vx = (p.x < g.x ? -8 : 8);
+            spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#e74c3c', 15);
+            spawnParticles(g.x, g.y, '#00bfff', 20);
+            boss.genkidama = null;
+        }
+        // Hit ground or expired
+        if (g.life <= 0 || g.y > GROUND_Y) {
+            if (g.y > GROUND_Y - 10) {
+                // Explosion on impact
+                spawnParticles(g.x, GROUND_Y, '#00bfff', 25);
+                spawnParticles(g.x, GROUND_Y, '#fff', 10);
+            }
+            boss.genkidama = null;
+        }
+    }
+
+    // Keep boss in arena
+    let arenaLeft = boss.arenaX;
+    let arenaRight = boss.arenaX + W - 50;
+    if (boss.x < arenaLeft) boss.x = arenaLeft;
+    if (boss.x > arenaRight) boss.x = arenaRight;
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function spawnParticles(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+        game.particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 6 - 2,
+            life: 20 + Math.random() * 20,
+            color: color,
+            size: 2 + Math.random() * 4
+        });
+    }
+}
+
+function updateParticles() {
+    for (let i = game.particles.length - 1; i >= 0; i--) {
+        let p = game.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.life--;
+        if (p.life <= 0) game.particles.splice(i, 1);
+    }
+}
+
+// ============================================================
+// DRAW
+// ============================================================
+function draw() {
+    // === SPACE BACKGROUND ===
+
+    // Deep space gradient
+    let grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0a0015');
+    grad.addColorStop(0.4, '#0d0030');
+    grad.addColorStop(0.7, '#1a0040');
+    grad.addColorStop(1, '#0a0020');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Stars (twinkling)
+    if (game.stars) {
+        game.stars.forEach(s => {
+            let sx = s.x - game.cameraX * 0.05;
+            // Wrap around
+            sx = ((sx % (W * 2)) + W * 2) % (W * 2) - W * 0.5;
+            if (sx < -10 || sx > W + 10) return;
+            let twinkle = s.brightness * (0.6 + 0.4 * Math.sin(Date.now() * s.twinkleSpeed * 0.01 + s.twinklePhase));
+            ctx.globalAlpha = twinkle;
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(sx, s.y, s.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+    }
+
+    // Nebula clouds (colored translucent clouds)
+    game.clouds.forEach(c => {
+        let cx = c.x - game.cameraX * 0.1;
+        cx = ((cx % (W * 2)) + W * 2) % (W * 2) - W * 0.3;
+        if (cx < -c.w && cx > W + c.w) return;
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = c.color || '#4a0e6b';
+        ctx.beginPath();
+        ctx.ellipse(cx, c.y, c.w / 2, c.w * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(cx - c.w * 0.3, c.y + 10, c.w * 0.35, c.w * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(cx + c.w * 0.25, c.y - 5, c.w * 0.3, c.w * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Planets (parallax)
+    if (game.planets) {
+        game.planets.forEach(pl => {
+            let px = pl.x - game.cameraX * 0.12;
+            if (px < -60 || px > W + 60) return;
+            // Planet body
+            let grd = ctx.createRadialGradient(px - pl.radius * 0.3, pl.y - pl.radius * 0.3, 2, px, pl.y, pl.radius);
+            grd.addColorStop(0, pl.color1);
+            grd.addColorStop(1, pl.color2);
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.arc(px, pl.y, pl.radius, 0, Math.PI * 2);
+            ctx.fill();
+            // Ring if present
+            if (pl.ringColor) {
+                ctx.strokeStyle = pl.ringColor;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath();
+                ctx.ellipse(px, pl.y, pl.radius * 1.6, pl.radius * 0.3, -0.2, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        });
+    }
+
+    // Distant space mountains / alien terrain silhouette (far)
+    ctx.fillStyle = '#1a0a30';
+    for (let i = 0; i < 10; i++) {
+        let mx = i * 180 - (game.cameraX * 0.08) % 180;
+        ctx.beginPath();
+        ctx.moveTo(mx - 30, GROUND_Y);
+        ctx.lineTo(mx + 40, GROUND_Y - 60 - (i % 4) * 20);
+        ctx.lineTo(mx + 70, GROUND_Y - 40 - (i % 3) * 15);
+        ctx.lineTo(mx + 150, GROUND_Y);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Closer alien terrain silhouette
+    ctx.fillStyle = '#2a1050';
+    for (let i = 0; i < 8; i++) {
+        let mx = i * 250 - (game.cameraX * 0.15) % 250;
+        ctx.beginPath();
+        ctx.moveTo(mx - 50, GROUND_Y);
+        ctx.lineTo(mx + 30, GROUND_Y - 80 - (i % 3) * 30);
+        ctx.lineTo(mx + 80, GROUND_Y - 50 - (i % 2) * 20);
+        ctx.lineTo(mx + 130, GROUND_Y - 90 - (i % 3) * 25);
+        ctx.lineTo(mx + 210, GROUND_Y);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Castle at the end (visible from 150m, at 200m position)
+    if (game.distance > 150 || game.state === 'bosscutscene2' || game.state === 'bossfight' || game.state === 'bossdefeat') {
+        let castleX = BOSS_FIGHT_DIST * PIXELS_PER_METER - game.cameraX;
+        let alpha = Math.min(1, (game.distance - 150) / 30);
+        if (game.state === 'bosscutscene2' || game.state === 'bossfight' || game.state === 'bossdefeat') alpha = 1;
+        ctx.globalAlpha = alpha;
+
+        // Castle main wall
+        ctx.fillStyle = '#2c1a4a';
+        ctx.fillRect(castleX - 70, GROUND_Y - 160, 140, 160);
+        // Stone texture
+        ctx.fillStyle = '#3a2560';
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 5; col++) {
+                let bx = castleX - 68 + col * 28 + (row % 2) * 14;
+                let by = GROUND_Y - 158 + row * 20;
+                ctx.fillRect(bx, by, 26, 18);
+            }
+        }
+
+        // Left tower
+        ctx.fillStyle = '#241545';
+        ctx.fillRect(castleX - 90, GROUND_Y - 200, 35, 200);
+        // Right tower
+        ctx.fillRect(castleX + 55, GROUND_Y - 200, 35, 200);
+
+        // Tower tops (pointed roofs)
+        ctx.fillStyle = '#8e44ad';
+        ctx.beginPath();
+        ctx.moveTo(castleX - 95, GROUND_Y - 200);
+        ctx.lineTo(castleX - 72, GROUND_Y - 240);
+        ctx.lineTo(castleX - 50, GROUND_Y - 200);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(castleX + 50, GROUND_Y - 200);
+        ctx.lineTo(castleX + 72, GROUND_Y - 240);
+        ctx.lineTo(castleX + 95, GROUND_Y - 200);
+        ctx.fill();
+
+        // Battlements (top of main wall)
+        ctx.fillStyle = '#2c1a4a';
+        for (let i = 0; i < 6; i++) {
+            ctx.fillRect(castleX - 65 + i * 24, GROUND_Y - 172, 16, 14);
+        }
+
+        // Door (large arched gate)
+        ctx.fillStyle = '#0a0012';
+        ctx.fillRect(castleX - 18, GROUND_Y - 60, 36, 60);
+        ctx.beginPath();
+        ctx.arc(castleX, GROUND_Y - 60, 18, Math.PI, 0);
+        ctx.fill();
+        // Door handle
+        ctx.fillStyle = '#f39c12';
+        ctx.beginPath();
+        ctx.arc(castleX + 8, GROUND_Y - 30, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Windows (glowing)
+        ctx.fillStyle = '#e74c3c';
+        ctx.globalAlpha = alpha * (0.6 + 0.3 * Math.sin(Date.now() * 0.002));
+        ctx.fillRect(castleX - 45, GROUND_Y - 120, 18, 22);
+        ctx.fillRect(castleX + 27, GROUND_Y - 120, 18, 22);
+        // Tower windows
+        ctx.fillRect(castleX - 82, GROUND_Y - 170, 12, 15);
+        ctx.fillRect(castleX + 65, GROUND_Y - 170, 12, 15);
+        ctx.globalAlpha = alpha;
+
+        // FLAG on the tallest tower (right tower)
+        // Flag pole
+        ctx.fillStyle = '#888';
+        ctx.fillRect(castleX + 71, GROUND_Y - 270, 3, 32);
+        // Flag (waving)
+        let wave = Math.sin(Date.now() * 0.004) * 3;
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.moveTo(castleX + 74, GROUND_Y - 270);
+        ctx.lineTo(castleX + 100, GROUND_Y - 265 + wave);
+        ctx.lineTo(castleX + 98, GROUND_Y - 255 + wave);
+        ctx.lineTo(castleX + 74, GROUND_Y - 252);
+        ctx.closePath();
+        ctx.fill();
+        // Skull/emblem on flag
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('J', castleX + 86, GROUND_Y - 258 + wave);
+
+        ctx.globalAlpha = 1;
+    }
+
+    // Lunar/alien ground
+    ctx.fillStyle = '#2d1b4e';
+    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    ctx.fillStyle = '#3d2560';
+    ctx.fillRect(0, GROUND_Y, W, 4);
+    // Ground texture (craters)
+    ctx.fillStyle = '#241545';
+    for (let i = 0; i < W; i += 30) {
+        let gx = (i + game.cameraX * 0.5) % 60;
+        if (gx < 15) {
+            ctx.beginPath();
+            ctx.ellipse(i, GROUND_Y + 15, 6, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    // Glowing ground edge
+    ctx.fillStyle = 'rgba(138, 43, 226, 0.3)';
+    ctx.fillRect(0, GROUND_Y, W, 2);
+
+    // Decorations (space theme: crystals and antennas)
+    game.decorations.forEach(d => {
+        let dx = d.x - game.cameraX;
+        if (dx < -50 || dx > W + 50) return;
+        if (d.type === 'crystal') {
+            // Glowing crystal
+            ctx.fillStyle = 'rgba(0, 229, 255, 0.2)';
+            ctx.beginPath();
+            ctx.arc(dx, d.y - 25, 20, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#00e5ff';
+            ctx.beginPath();
+            ctx.moveTo(dx - 6, d.y);
+            ctx.lineTo(dx - 2, d.y - 40);
+            ctx.lineTo(dx + 2, d.y - 35);
+            ctx.lineTo(dx + 5, d.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#00bcd4';
+            ctx.beginPath();
+            ctx.moveTo(dx + 3, d.y);
+            ctx.lineTo(dx + 7, d.y - 28);
+            ctx.lineTo(dx + 10, d.y);
+            ctx.closePath();
+            ctx.fill();
+        } else {
+            // Antenna / satellite dish
+            ctx.fillStyle = '#666';
+            ctx.fillRect(dx - 1, d.y - 35, 3, 35);
+            ctx.fillStyle = '#888';
+            ctx.beginPath();
+            ctx.arc(dx, d.y - 35, 8, Math.PI, 0);
+            ctx.fill();
+            // Blinking light
+            ctx.fillStyle = Date.now() % 1000 < 500 ? '#e74c3c' : '#333';
+            ctx.beginPath();
+            ctx.arc(dx, d.y - 37, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    // Platforms
+    game.platforms.forEach(plat => {
+        let px = plat.x - game.cameraX;
+        if (px > W + 50 || px + plat.w < -50) return;
+        // LEGO brick style platform
+        ctx.fillStyle = '#C0392B';
+        ctx.fillRect(px, plat.y, plat.w, plat.h);
+        ctx.fillStyle = '#E74C3C';
+        ctx.fillRect(px + 2, plat.y + 2, plat.w - 4, plat.h - 6);
+        // Studs
+        ctx.fillStyle = '#D63031';
+        for (let s = px + 10; s < px + plat.w - 5; s += 18) {
+            ctx.beginPath();
+            ctx.arc(s, plat.y + 2, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    // Enemies
+    game.enemies.forEach(e => {
+        let ex = e.x - game.cameraX;
+        if (ex > W + 50 || ex < -50) return;
+        drawEnemy(e);
+    });
+
+    // Boss (cutscene or fight or defeat)
+    if (game.boss) {
+        let bx = game.boss.x - game.cameraX;
+        if (bx > -100 && bx < W + 100) {
+            let isMasked = game.state === 'cutscene' || (game.boss.masked === true);
+            if (game.state === 'bossdefeat' && game.bossDefeat) {
+                // Draw boss falling/fallen with rotation
+                ctx.save();
+                let bcx = game.boss.x - game.cameraX + game.boss.w / 2;
+                let bcy = game.boss.y + game.boss.h;
+                ctx.translate(bcx, bcy);
+                ctx.rotate(game.bossDefeat.bossAngle);
+                ctx.translate(-bcx, -bcy);
+                drawBoss(game.boss.x, game.boss.y, game.boss.w, game.boss.h, false);
+                ctx.restore();
+            } else {
+                drawBoss(game.boss.x, game.boss.y, game.boss.w, game.boss.h, isMasked);
+            }
+        }
+    }
+
+    // Player
+    let p = game.player;
+    if (!p.dead) {
+        if (p.invincible > 0 && p.invincible % 4 < 2) {
+            // Blink
+        } else {
+            drawLego(p.x, p.y, p.w, p.h, p.facing, '#3498db', true, p.animFrame, p.crouching);
+        }
+    }
+
+    // Pickups (machine gun)
+    game.pickups.forEach(pk => {
+        let px = pk.x - game.cameraX;
+        if (px < -50 || px > W + 50) return;
+        let bobY = pk.y - 5 + Math.sin(pk.bobTimer) * 4;
+        // Glow effect
+        ctx.fillStyle = 'rgba(255, 102, 0, 0.3)';
+        ctx.beginPath();
+        ctx.arc(px + pk.w / 2, bobY + pk.h / 2, 18, 0, Math.PI * 2);
+        ctx.fill();
+        // Gun body
+        ctx.fillStyle = '#444';
+        ctx.fillRect(px, bobY + 2, pk.w, 6);
+        // Barrel
+        ctx.fillStyle = '#666';
+        ctx.fillRect(px + pk.w - 2, bobY + 3, 8, 4);
+        // Magazine
+        ctx.fillStyle = '#FF6600';
+        ctx.fillRect(px + 6, bobY + 8, 8, 6);
+        // Stock
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(px - 4, bobY + 1, 6, 7);
+    });
+
+    // Bullets
+    ctx.fillStyle = p.hasMachineGun ? '#FF6600' : '#F1C40F';
+    game.bullets.forEach(b => {
+        let bx = b.x - game.cameraX;
+        ctx.beginPath();
+        ctx.arc(bx, b.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // Boss bullets
+    ctx.fillStyle = '#9B59B6';
+    game.bossBullets.forEach(b => {
+        let bx = b.x - game.cameraX;
+        ctx.beginPath();
+        ctx.arc(bx, b.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#8E44AD';
+        ctx.beginPath();
+        ctx.arc(bx, b.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#9B59B6';
+    });
+
+    // Genkidama (charging + active)
+    if (game.boss && game.state === 'bossfight') {
+        let boss = game.boss;
+        // Charging genkidama
+        if (boss.genkidamaCharging) {
+            let bx = boss.x + boss.w / 2 - game.cameraX;
+            let by = boss.y - 80;
+            let progress = boss.genkidamaTimer / 180;
+            let radius = 5 + progress * 30;
+            // Outer glow
+            ctx.globalAlpha = 0.2 + progress * 0.3;
+            let glowGrad = ctx.createRadialGradient(bx, by, 0, bx, by, radius * 2);
+            glowGrad.addColorStop(0, '#00bfff');
+            glowGrad.addColorStop(0.5, 'rgba(0,100,255,0.3)');
+            glowGrad.addColorStop(1, 'rgba(0,0,50,0)');
+            ctx.fillStyle = glowGrad;
+            ctx.beginPath();
+            ctx.arc(bx, by, radius * 2, 0, Math.PI * 2);
+            ctx.fill();
+            // Core ball
+            ctx.globalAlpha = 0.5 + progress * 0.5;
+            let coreGrad = ctx.createRadialGradient(bx, by, 0, bx, by, radius);
+            coreGrad.addColorStop(0, '#ffffff');
+            coreGrad.addColorStop(0.3, '#80dfff');
+            coreGrad.addColorStop(0.7, '#0080ff');
+            coreGrad.addColorStop(1, '#0040aa');
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.arc(bx, by, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            // "GENKIDAMA!" text while charging
+            if (progress > 0.3) {
+                ctx.fillStyle = '#00bfff';
+                ctx.font = 'bold 14px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText('GENKIDAMA !', bx, by - radius - 15);
+            }
+        }
+        // Active genkidama in flight
+        if (boss.genkidama) {
+            let g = boss.genkidama;
+            let gx = g.x - game.cameraX;
+            let gy = g.y;
+            // Outer glow
+            ctx.globalAlpha = 0.4;
+            let glowGrad = ctx.createRadialGradient(gx, gy, 0, gx, gy, g.radius * 2.5);
+            glowGrad.addColorStop(0, '#00bfff');
+            glowGrad.addColorStop(0.4, 'rgba(0,100,255,0.4)');
+            glowGrad.addColorStop(1, 'rgba(0,0,50,0)');
+            ctx.fillStyle = glowGrad;
+            ctx.beginPath();
+            ctx.arc(gx, gy, g.radius * 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            // Core
+            ctx.globalAlpha = 1;
+            let coreGrad = ctx.createRadialGradient(gx, gy, 0, gx, gy, g.radius);
+            coreGrad.addColorStop(0, '#ffffff');
+            coreGrad.addColorStop(0.2, '#b0e0ff');
+            coreGrad.addColorStop(0.5, '#00bfff');
+            coreGrad.addColorStop(0.8, '#0060cc');
+            coreGrad.addColorStop(1, '#003088');
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.arc(gx, gy, g.radius, 0, Math.PI * 2);
+            ctx.fill();
+            // Inner sparkle
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.beginPath();
+            ctx.arc(gx - g.radius * 0.3, gy - g.radius * 0.3, g.radius * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Particles
+    game.particles.forEach(pt => {
+        let alpha = pt.life / 40;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x - game.cameraX - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
+    });
+    ctx.globalAlpha = 1;
+
+    // ---- HUD ----
+
+    // Distance bar
+    let distRatio = Math.min(1, game.distance / TOTAL_DISTANCE);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(W / 2 - 200, 12, 400, 20);
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(W / 2 - 200, 12, 400 * distRatio, 20);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(W / 2 - 200, 12, 400, 20);
+
+    // Distance markers
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('0m', W / 2 - 200, 44);
+    ctx.fillText('100m', W / 2, 44);
+    ctx.fillText('200m', W / 2 + 200, 44);
+
+    // 100m marker line
+    ctx.fillStyle = '#f39c12';
+    ctx.fillRect(W / 2, 12, 2, 20);
+
+    // Current distance text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.floor(game.distance) + 'm', W / 2, 26);
+
+    // Player health
+    drawHealthBar(15, 25, 150, 14, p.hp, p.maxHp, '#2ecc71', 'ULSON');
+
+    // Boss health (during fight)
+    if (game.state === 'bossfight' && game.boss && game.boss.hp > 0) {
+        let bossLabel = game.boss.masked ? 'BOSS' : 'JAY';
+        drawHealthBar(W - 215, 25, 200, 16, game.boss.hp, game.boss.maxHp, '#e74c3c', bossLabel);
+    }
+
+    // Score
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Segoe UI';
+    ctx.textAlign = 'right';
+    ctx.fillText('Score: ' + game.score, W - 15, 70);
+
+    // Machine gun HUD indicator
+    if (p.hasMachineGun) {
+        let seconds = Math.ceil(p.machineGunTimer / 60);
+        ctx.fillStyle = '#FF6600';
+        ctx.font = 'bold 13px Segoe UI';
+        ctx.textAlign = 'left';
+        ctx.fillText('MITRAILLETTE : ' + seconds + 's', 15, 60);
+        // Timer bar
+        let ratio = p.machineGunTimer / 600;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(15, 65, 120, 6);
+        ctx.fillStyle = '#FF6600';
+        ctx.fillRect(15, 65, 120 * ratio, 6);
+    }
+
+    // Crosshair
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mouse.x - 12, mouse.y);
+    ctx.lineTo(mouse.x + 12, mouse.y);
+    ctx.moveTo(mouse.x, mouse.y - 12);
+    ctx.lineTo(mouse.x, mouse.y + 12);
+    ctx.stroke();
+
+    // ---- CUTSCENE ----
+    if (game.state === 'cutscene') {
+        // Phase 0: Boss appears - dramatic entrance
+        if (game.cutscenePhase === 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = '#f39c12';
+            ctx.font = 'bold 20px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('— UN ENNEMI APPROCHE... —', W / 2, 80);
+            // Exclamation mark above boss
+            if (game.boss) {
+                let bx = game.boss.x - game.cameraX + game.boss.w / 2;
+                ctx.fillStyle = '#e74c3c';
+                ctx.font = 'bold 28px Segoe UI';
+                ctx.fillText('!', bx, game.boss.y - 35);
+            }
+        }
+
+        // Phase 1: Boss talks - dialogue
+        if (game.cutscenePhase === 1 && game.cutsceneTextIndex < game.cutsceneTexts.length) {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, W, H);
+
+            // Title
+            ctx.fillStyle = '#f39c12';
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('— RENCONTRE AVEC LE BOSS —', W / 2, H - 155);
+
+            // Dialog box
+            ctx.fillStyle = 'rgba(0,0,0,0.95)';
+            ctx.fillRect(50, H - 135, W - 100, 105);
+            ctx.strokeStyle = '#8e44ad';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(50, H - 135, W - 100, 105);
+
+            // Portrait
+            let fullText = game.cutsceneTexts[game.cutsceneTextIndex];
+            let portrait = fullText.startsWith('Ulson') ? 'husky' : 'boss-masked';
+            drawPortrait(58, H - 130, portrait);
+
+            // Text - ALL WHITE BOLD
+            let shown = fullText.substring(0, Math.floor(game.cutsceneCharIndex));
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px Segoe UI';
+            ctx.textAlign = 'left';
+            ctx.fillText(shown, 110, H - 82);
+
+            // "Press Enter" indicator
+            if (game.cutsceneWaitForEnter) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.font = 'bold 14px Segoe UI';
+                ctx.textAlign = 'right';
+                ctx.fillText('[ ENTRÉE ]', W - 65, H - 42);
+            }
+        }
+
+        // Phase 2: Boss retreats slowly
+        if (game.cutscenePhase === 2) {
+            ctx.fillStyle = '#ccc';
+            ctx.font = 'italic 16px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('Le Boss s\'éloigne lentement...', W / 2, 80);
+        }
+    }
+
+    // ---- BOSS CUTSCENE 2 (200m - mask reveal) ----
+    if (game.state === 'bosscutscene2' && game.bossCutscene2) {
+        let cs = game.bossCutscene2;
+
+        // Phase 0: Show castle view
+        if (cs.phase === 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = '#f39c12';
+            ctx.font = 'bold 22px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('— LA FORTERESSE DE L\'ENNEMI —', W / 2, 80);
+        }
+
+        // Phase 1: Boss exits castle
+        if (cs.phase === 1) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 20px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('— LE BOSS APPARAÎT —', W / 2, 80);
+            // Exclamation above boss
+            if (game.boss) {
+                let bx = game.boss.x - game.cameraX + game.boss.w / 2;
+                ctx.fillStyle = '#e74c3c';
+                ctx.font = 'bold 28px Segoe UI';
+                ctx.fillText('!', bx, game.boss.y - 35);
+            }
+        }
+
+        // Phase 2: Dialogue with portraits
+        if (cs.phase === 2 && cs.textIndex < cs.texts.length) {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, W, H);
+
+            // Title
+            ctx.fillStyle = '#f39c12';
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText(cs.maskRemoved ? '— JAY SE RÉVÈLE —' : '— RENCONTRE AVEC LE BOSS —', W / 2, H - 155);
+
+            // Dialog box
+            ctx.fillStyle = 'rgba(0,0,0,0.95)';
+            ctx.fillRect(50, H - 135, W - 100, 105);
+            ctx.strokeStyle = '#8e44ad';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(50, H - 135, W - 100, 105);
+
+            // Portrait + Text
+            let fullText = cs.texts[cs.textIndex];
+            let shown = fullText.substring(0, Math.floor(cs.charIndex));
+
+            // Determine portrait
+            let portrait = 'boss-masked';
+            if (fullText.startsWith('Ulson')) {
+                portrait = 'husky';
+            } else if (fullText.startsWith('Jay')) {
+                portrait = 'jaysouni';
+            } else if (fullText.startsWith('*')) {
+                portrait = 'narration';
+            } else {
+                portrait = cs.maskRemoved ? 'jaysouni' : 'boss-masked';
+            }
+
+            drawPortrait(58, H - 130, portrait);
+
+            // ALL WHITE BOLD text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = fullText.startsWith('*') ? 'bold italic 20px Segoe UI' : 'bold 20px Segoe UI';
+            ctx.textAlign = 'left';
+            ctx.fillText(shown, 110, H - 82);
+
+            // "Press Enter" indicator
+            if (cs.waitForEnter) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.font = 'bold 14px Segoe UI';
+                ctx.textAlign = 'right';
+                ctx.fillText('[ ENTRÉE ]', W - 65, H - 42);
+            }
+        }
+    }
+
+    // ---- BOSS DEFEAT CUTSCENE ----
+    if (game.state === 'bossdefeat' && game.bossDefeat) {
+        let bd = game.bossDefeat;
+
+        // Dark overlay
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(0, 0, W, H);
+
+        // "VICTOIRE" title flashing
+        if (bd.phase === 1) {
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 32px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('— VICTOIRE —', W / 2, 80);
+        }
+
+        // Dialogue (phase 1)
+        if (bd.phase === 1 && bd.textIndex < bd.texts.length) {
+            // Dialog box
+            ctx.fillStyle = 'rgba(0,0,0,0.95)';
+            ctx.fillRect(50, H - 135, W - 100, 105);
+            ctx.strokeStyle = '#8e44ad';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(50, H - 135, W - 100, 105);
+
+            let fullText = bd.texts[bd.textIndex];
+            let shown = fullText.substring(0, Math.floor(bd.charIndex));
+
+            // Determine portrait
+            let portrait = 'jaysouni';
+            if (fullText.startsWith('Ulson')) {
+                portrait = 'husky';
+            } else if (fullText.startsWith('*')) {
+                portrait = 'narration';
+            }
+
+            drawPortrait(58, H - 130, portrait);
+
+            // ALL WHITE BOLD text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = fullText.startsWith('*') ? 'bold italic 20px Segoe UI' : 'bold 20px Segoe UI';
+            ctx.textAlign = 'left';
+            ctx.fillText(shown, 110, H - 82);
+
+            if (bd.waitForEnter) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.font = 'bold 14px Segoe UI';
+                ctx.textAlign = 'right';
+                ctx.fillText('[ ENTRÉE ]', W - 65, H - 42);
+            }
+        }
+    }
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+document.addEventListener('keydown', e => {
+    if (e.repeat) return;
+    keys[e.code] = true;
+    if (e.code === 'ArrowUp' || e.code === 'ArrowDown') e.preventDefault();
+    // Double jump: request jump on key press (not hold)
+    if ((e.code === 'ArrowUp' || e.code === 'KeyW') && game.player) {
+        game.player.jumpRequested = true;
+    }
+    // F key triggers shooting (single shot per press)
+    if (e.code === 'KeyF' && game.state !== 'cutscene' && game.state !== 'bosscutscene2' && game.state !== 'bossdefeat' && game.state !== 'dead' && game.state !== 'won') {
+        mouse.clicked = true;
+    }
+    // Enter advances dialogue in cutscenes
+    if (e.code === 'Enter') {
+        game.dialogAdvance = true;
+    }
+});
+document.addEventListener('keyup', e => {
+    keys[e.code] = false;
+});
+
+canvas.addEventListener('mousemove', e => {
+    let rect = canvas.getBoundingClientRect();
+    let scaleX = W / rect.width;
+    let scaleY = H / rect.height;
+    mouse.x = (e.clientX - rect.left) * scaleX;
+    mouse.y = (e.clientY - rect.top) * scaleY;
+});
+
+canvas.addEventListener('mousedown', e => {
+    if (e.button === 0) {
+        mouse.down = true;
+        mouse.clicked = true;
+    }
+});
+canvas.addEventListener('mouseup', e => {
+    if (e.button === 0) mouse.down = false;
+});
+
+// Continuous shooting only with machine gun (not with pistol)
+setInterval(() => {
+    if (game.player && game.player.hasMachineGun &&
+        (mouse.down || keys['KeyF']) &&
+        game.state !== 'cutscene' && game.state !== 'bosscutscene2' &&
+        game.state !== 'bossdefeat' && game.state !== 'dead' && game.state !== 'won') {
+        mouse.clicked = true;
+    }
+}, 100);
+
+// ============================================================
+// TOUCH CONTROLS (MOBILE)
+// ============================================================
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+if (isMobile) {
+    document.getElementById('touchControls').classList.add('visible');
+    canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+    function setupTouchBtn(id, onDown, onUp) {
+        let el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('touchstart', e => {
+            e.preventDefault();
+            el.classList.add('pressed');
+            onDown();
+        }, { passive: false });
+        el.addEventListener('touchend', e => {
+            e.preventDefault();
+            el.classList.remove('pressed');
+            onUp();
+        }, { passive: false });
+        el.addEventListener('touchcancel', e => {
+            el.classList.remove('pressed');
+            onUp();
+        });
+    }
+
+    // Left
+    setupTouchBtn('tb-left',
+        () => { keys['ArrowLeft'] = true; if (game.player) game.player.facing = -1; },
+        () => { keys['ArrowLeft'] = false; }
+    );
+    // Right
+    setupTouchBtn('tb-right',
+        () => { keys['ArrowRight'] = true; if (game.player) game.player.facing = 1; },
+        () => { keys['ArrowRight'] = false; }
+    );
+    // Jump (each tap = one jumpRequested, supports double jump)
+    setupTouchBtn('tb-jump',
+        () => {
+            keys['ArrowUp'] = true;
+            if (game.player) game.player.jumpRequested = true;
+        },
+        () => { keys['ArrowUp'] = false; }
+    );
+    // Crouch
+    setupTouchBtn('tb-crouch',
+        () => { keys['ArrowDown'] = true; },
+        () => { keys['ArrowDown'] = false; }
+    );
+    // Shoot (fires in facing direction, continuous for machine gun)
+    let shootInterval = null;
+    setupTouchBtn('tb-shoot',
+        () => {
+            keys['KeyF'] = true;
+            mouse.clicked = true;
+            mouse.down = false;
+            shootInterval = setInterval(() => {
+                mouse.clicked = true;
+            }, 100);
+        },
+        () => {
+            keys['KeyF'] = false;
+            if (shootInterval) { clearInterval(shootInterval); shootInterval = null; }
+        }
+    );
+    // Enter (dialogue advance)
+    setupTouchBtn('tb-enter',
+        () => { game.dialogAdvance = true; },
+        () => {}
+    );
+}
+
+// ============================================================
+// START
+// ============================================================
+function startGame() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('gameOverScreen').classList.add('hidden');
+    document.getElementById('winScreen').classList.add('hidden');
+    initGame();
+    if (!isMobile) canvas.style.cursor = 'none';
+}
+
+// Initial render of start screen background
+initGame();
+gameLoop();
+
+// Draw character preview on start screen
+(function drawCharPreview() {
+    let pc = document.getElementById('charPreview');
+    if (!pc) return;
+    let c = pc.getContext('2d');
+    let pw = 120, ph = 160;
+    let scale = 2.5;
+    let cx = pw / 2, baseY = ph - 20;
+
+    // Clear
+    c.clearRect(0, 0, pw, ph);
+
+    // Glow behind character (ice blue)
+    let glow = c.createRadialGradient(cx, baseY - 40, 5, cx, baseY - 40, 55);
+    glow.addColorStop(0, 'rgba(79,195,247,0.2)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = glow;
+    c.fillRect(0, 0, pw, ph);
+
+    // Character dimensions (scaled up)
+    let w = 28 * scale / 2.5;  // keep at 28
+    let h = 40 * scale / 2.5;  // keep at 40
+    let lx = cx - w / 2;       // left x
+    let ly = baseY - h;        // top y
+
+    // Scale everything up
+    c.save();
+    c.translate(cx, baseY);
+    c.scale(scale, scale);
+    c.translate(-14, -40);     // center the 28x40 character at origin
+
+    // --- Draw Husky large ---
+    // Tail behind body
+    c.fillStyle = '#E0E0E0';
+    c.fillRect(-5, -4, 5, 4);
+    c.fillRect(-7, -8, 4, 5);
+    c.fillStyle = '#F5F5F5';
+    c.fillRect(-6, -6, 3, 3);
+
+    // Head - white fur
+    c.fillStyle = '#F5F5F5';
+    c.fillRect(4, -14, 20, 14);
+
+    // Pointed ears
+    c.fillStyle = '#E0E0E0';
+    c.beginPath();
+    c.moveTo(4, -14);
+    c.lineTo(7, -22);
+    c.lineTo(11, -14);
+    c.closePath();
+    c.fill();
+    c.beginPath();
+    c.moveTo(17, -14);
+    c.lineTo(21, -22);
+    c.lineTo(24, -14);
+    c.closePath();
+    c.fill();
+    // Inner ear pink
+    c.fillStyle = '#FFCCCC';
+    c.beginPath();
+    c.moveTo(6, -14);
+    c.lineTo(7, -19);
+    c.lineTo(9, -14);
+    c.closePath();
+    c.fill();
+    c.beginPath();
+    c.moveTo(19, -14);
+    c.lineTo(21, -19);
+    c.lineTo(22, -14);
+    c.closePath();
+    c.fill();
+
+    // Face area
+    c.fillStyle = '#F5F5F5';
+    c.fillRect(5, -10, 18, 10);
+
+    // Grey mask markings
+    c.fillStyle = '#666';
+    c.fillRect(7, -12, 5, 4);
+    c.fillRect(16, -12, 5, 4);
+    c.fillRect(11, -14, 6, 3);
+
+    // Blue eyes
+    c.fillStyle = '#fff';
+    c.fillRect(9, -8, 4, 3);
+    c.fillRect(15, -8, 4, 3);
+    c.fillStyle = '#4FC3F7';
+    c.fillRect(10, -8, 2, 2);
+    c.fillRect(16, -8, 2, 2);
+    // Pupils
+    c.fillStyle = '#111';
+    c.fillRect(10, -7, 1, 1);
+    c.fillRect(16, -7, 1, 1);
+
+    // Black nose
+    c.fillStyle = '#111';
+    c.fillRect(12, -4, 4, 3);
+    // Mouth
+    c.fillRect(13, -1, 2, 1);
+
+    // Body - white fur with grey belly
+    c.fillStyle = '#F0F0F0';
+    c.fillRect(2, 0, 24, 20);
+    c.fillStyle = '#DDD';
+    c.fillRect(6, 2, 16, 14);
+
+    // Front legs / arms
+    c.fillStyle = '#E0E0E0';
+    c.fillRect(-5, 2, 7, 5);
+    c.fillRect(26, 2, 7, 5);
+    // Paws
+    c.fillStyle = '#F5F5F5';
+    c.fillRect(-6, 5, 4, 4);
+    c.fillRect(30, 5, 4, 4);
+
+    // Gun
+    c.fillStyle = '#555';
+    c.fillRect(29, 3, 14, 5);
+    c.fillStyle = '#333';
+    c.fillRect(39, 4, 4, 3);
+
+    // Legs
+    c.fillStyle = '#CCCCCC';
+    c.fillRect(3, 20, 9, 18);
+    c.fillRect(16, 20, 9, 18);
+    // Paw feet
+    c.fillStyle = '#F5F5F5';
+    c.fillRect(1, 36, 12, 4);
+    c.fillRect(15, 36, 12, 4);
+
+    c.restore();
+
+    // Name below (ice blue)
+    c.fillStyle = '#4FC3F7';
+    c.font = 'bold 13px Segoe UI';
+    c.textAlign = 'center';
+    c.fillText('\u2605 ULSON \u2605', cx, ph - 4);
+})();
+</script>
+
+</body>
+</html>
